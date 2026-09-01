@@ -113,7 +113,7 @@ sign_app
 
 echo "==> Verifying signature..."
 codesign --verify --strict "$APP" && echo "    signature OK"
-codesign -d --requirements :- "$APP" 2>/dev/null | grep -oE 'designated = .*' || true
+codesign -d --requirements - "$APP" 2>/dev/null | grep -oE 'designated =>.*' || true
 
 echo "==> Launching $APP_NAME..."
 open "$APP"

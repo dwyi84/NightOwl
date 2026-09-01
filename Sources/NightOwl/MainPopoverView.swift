@@ -204,7 +204,13 @@ struct MainPopoverView: View {
                 .font(.subheadline.weight(.medium))
 
             switchRow("Release on AC unplug", isOn: $sleep.acUnplugSafeguard)
-            switchRow("Stop below \(SleepManager.batteryThresholdPercent)% battery", isOn: $sleep.batterySafeguard)
+            switchRow("Thermal Guard", isOn: $sleep.thermalGuard)
+            if sleep.isLaptop {
+                switchRow("Stop below \(SleepManager.batteryThresholdPercent)% battery", isOn: $sleep.batterySafeguard)
+                switchRow("Keep running with lid closed", isOn: $sleep.keepAwakeLidClosed)
+                    .disabled(!sleep.power.onACPower)
+                    .help("Experimental — requires AC power")
+            }
 
             HStack(spacing: 6) {
                 Image(systemName: powerIconName)
@@ -279,6 +285,15 @@ struct MainPopoverView: View {
                 Text(statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
+            }
+            if sleep.thermalState == .serious || sleep.thermalState == .critical {
+                HStack(spacing: 6) {
+                    Image(systemName: "thermometer.high")
+                        .foregroundStyle(sleep.thermalState == .critical ? Color.red : Color.orange)
+                    Text("Thermal: \(sleep.thermalLabel)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
     }

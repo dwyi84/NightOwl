@@ -17,10 +17,12 @@ A featherweight **macOS menu bar utility** that keeps your Mac awake with a sing
   - *System Only* — the display may sleep and lock; the system itself stays awake.
   - *Display + System* — neither the display nor the system may idle-sleep.
 - **Auto-Stop Timer** — run forever (`∞`), pick a preset (**15m / 30m / 1h / 2h**), or dial in any duration with **±10m / ±1h** steppers (10 minutes up to 24 hours). A live countdown in the panel shows exactly how long the owl stays on watch, and a macOS notification tells you when it lets go.
-- **Smart SafeGuard** — NightOwl never fights a dying battery:
+- **Smart SafeGuard** — NightOwl never fights a dying battery or an overheating machine:
   - releases automatically the moment the **power adapter is unplugged**,
   - releases automatically when the **battery drops to 20%** or below,
-  - both safeguards can be toggled independently.
+  - **Thermal Guard** (on by default) releases the session the instant macOS reports `.serious`/`.critical` thermal state,
+  - safeguards adapt to your hardware — battery and closed-lid options appear only on laptops (detected dynamically, never by model name).
+- **Closed-Lid Keep-Awake (experimental)** — on Apple Silicon, a `PreventSystemSleep` assertion can hold a lid-closed MacBook in powered DarkWake (display off, system running) instead of full sleep, so background builds and LLM runs keep going with the lid shut. Requires AC power: unplug the cable, the close-lid session releases with it. NightOwl never blocks the sleep itself — lid close transitions are honored the moment the session ends.
 - **Code-Drawn Owl Icon** — the menu bar glyph is pure SwiftUI `Shape`/`Path` vector art (head, ear tufts, beak, wide-open or sleepy closed eyes). No image assets, and it renders as a template image so it follows the menu bar tint in light and dark mode.
 - **One-Click Auto-Update** — "Check for Updates" queries the GitHub Releases API, and when a newer version is found it downloads, replaces the running app in place, and relaunches — all from one click.
 - **Scroll-Free 320pt Panel** — every control fits on one screen: toggle, mode segment, timer chips, safeguards, live status, and footer actions.
@@ -79,7 +81,8 @@ While active you will see `PreventUserIdleSystemSleep` (System Only) or `Prevent
 - **Keep Awake** — master on/off switch; the owl icon reflects the state.
 - **Mode** — *System Only* (display may sleep/lock) or *Display + System*.
 - **Auto-Stop** — `∞` or a 15m / 30m / 1h / 2h preset, or dial any custom duration with the −1h / −10m / +10m / +1h steppers (10 minutes to 24 hours), with a live countdown in Status.
-- **Smart SafeGuard** — independent toggles for AC-unplug release and the 20% battery floor, plus the current power source and battery level.
+- **Smart SafeGuard** — independent toggles for AC-unplug release, the 20% battery floor, and Thermal Guard, plus the current power source and battery level.
+- **Keep running with lid closed** — laptop-only experimental option (AC required); the owl keeps the system powered in DarkWake while the lid is shut and releases everything the moment you unplug, overheat, or stop the session.
 - **Status** — always-on row showing the remaining time (or `∞`) plus the current state and the reason for the last automatic release.
 - **Check for Updates** — header button that downloads and installs newer GitHub releases in one click.
 - **Reset** — restore all settings to their defaults.

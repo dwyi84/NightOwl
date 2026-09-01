@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import CoreGraphics
 import Foundation
 import IOKit
 import IOKit.ps
@@ -67,6 +68,10 @@ final class SleepManager: ObservableObject {
     @Published private(set) var remainingSeconds: TimeInterval?
     @Published private(set) var power = PowerState()
     @Published private(set) var lastReleaseReason: String?
+    /// Dynamically detected: battery present (IOPS) or built-in display
+    /// (CoreGraphics). No model-name sniffing.
+    @Published private(set) var isLaptop = true
+    @Published private(set) var thermalState: ProcessInfo.ThermalState = .nominal
 
     // Preferences (persisted)
     @Published var mode: SleepMode {
@@ -97,6 +102,23 @@ final class SleepManager: ObservableObject {
         didSet {
             persist()
             checkSafeguards(previousOnAC: power.onACPower)
+        }
+    }
+    /// Releases the session when the hardware reports .serious/.critical heat.
+    @Published var thermalGuard: Bool {
+        didSet {
+            persist()
+            evaluateThermalGuard()
+        }
+    }
+    /// Experimental closed-lid keep-awake. Holds an additional
+    /// `PreventSystemSleep` assertion while active and on AC power, so a
+    /// lid-closed MacBook settles into DarkWake (system powered, display off)
+    /// instead of full sleep. Verified on macOS 26 / Apple Silicon.
+    @Published var keepAwakeLidClosed: Bool {
+        didSet {
+            persist()
+            refreshClamshellAssertion()
         }
     }
 
@@ -132,6 +154,7 @@ final class SleepManager: ObservableObject {
 
     // Internals
     private var assertionID: IOPMAssertionID = 0
+    private var clamshellAssertionID: IOPMAssertionID = 0
     private var deadline: Date?
     private var tickTimer: Timer?
     private var batteryPollTimer: Timer?
@@ -145,6 +168,8 @@ final class SleepManager: ObservableObject {
         static let timer = "timerMinutes"
         static let acSafeguard = "acUnplugSafeguard"
         static let batterySafeguard = "batterySafeguard"
+        static let thermalGuard = "thermalGuard"
+        static let keepAwakeLidClosed = "keepAwakeLidClosed"
     }
 
     init() {
@@ -154,9 +179,14 @@ final class SleepManager: ObservableObject {
         timerMinutes = max(storedTimer, 0)
         acUnplugSafeguard = defaults.object(forKey: Keys.acSafeguard) as? Bool ?? true
         batterySafeguard = defaults.object(forKey: Keys.batterySafeguard) as? Bool ?? true
+        thermalGuard = defaults.object(forKey: Keys.thermalGuard) as? Bool ?? true
+        keepAwakeLidClosed = defaults.object(forKey: Keys.keepAwakeLidClosed) as? Bool ?? false
+        thermalState = ProcessInfo.processInfo.thermalState
 
         observeWorkspaceLifecycle()
+        observeThermalState()
         startPowerMonitoring()
+        refreshDeviceClass()
     }
 
     // MARK: Activation
@@ -175,6 +205,7 @@ final class SleepManager: ObservableObject {
         resetDeadline()
         startTicking()
         startBatteryPolling()
+        refreshClamshellAssertion()
 
         // Initial safeguard pass: refuse to keep a sub-threshold battery awake.
         power = readPowerState()
@@ -184,6 +215,7 @@ final class SleepManager: ObservableObject {
     func deactivate(reason: String? = nil) {
         guard isActive else { return }
         releaseAssertion()
+        releaseClamshellAssertion()
         stopTicking()
         stopBatteryPolling()
         isActive = false
@@ -216,6 +248,8 @@ final class SleepManager: ObservableObject {
         timerMinutes = 0
         acUnplugSafeguard = true
         batterySafeguard = true
+        thermalGuard = true
+        keepAwakeLidClosed = false
         lastReleaseReason = nil
     }
 
@@ -240,6 +274,35 @@ final class SleepManager: ObservableObject {
         guard assertionID != 0 else { return }
         IOPMAssertionRelease(assertionID)
         assertionID = 0
+    }
+
+    // MARK: Clamshell keep-awake (experimental)
+
+    /// Holds a `PreventSystemSleep` assertion while the session is active and
+    /// the machine is on AC power, so a closed lid ends in DarkWake (system
+    /// powered, display off) instead of full sleep.
+    private func refreshClamshellAssertion() {
+        let shouldHold = isActive && keepAwakeLidClosed && power.onACPower
+        if shouldHold {
+            guard clamshellAssertionID == 0 else { return }
+            var id = IOPMAssertionID()
+            let result = IOPMAssertionCreateWithName(
+                kIOPMAssertionTypePreventSystemSleep as CFString,
+                IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                "NightOwl lid-closed keep-awake (AC)" as CFString,
+                &id
+            )
+            guard result == kIOReturnSuccess else { return }
+            clamshellAssertionID = id
+        } else {
+            releaseClamshellAssertion()
+        }
+    }
+
+    private func releaseClamshellAssertion() {
+        guard clamshellAssertionID != 0 else { return }
+        IOPMAssertionRelease(clamshellAssertionID)
+        clamshellAssertionID = 0
     }
 
     // MARK: Timer
@@ -309,11 +372,22 @@ final class SleepManager: ObservableObject {
     func powerSourceChanged() {
         let previousOnAC = power.onACPower
         power = readPowerState()
+        refreshDeviceClass()
         checkSafeguards(previousOnAC: previousOnAC)
+        refreshClamshellAssertion()
     }
 
     func refreshPowerState() {
         power = readPowerState()
+        refreshDeviceClass()
+    }
+
+    /// Laptop = battery present or a built-in display attached. Union of both
+    /// signals avoids misclassifying odd hardware; desktops have neither.
+    private func refreshDeviceClass() {
+        let hasBattery = power.batteryPercent != nil
+        let hasBuiltinDisplay = CGDisplayIsBuiltin(CGMainDisplayID()) != 0
+        isLaptop = hasBattery || hasBuiltinDisplay
     }
 
     private func checkSafeguards(previousOnAC: Bool) {
@@ -392,6 +466,7 @@ final class SleepManager: ObservableObject {
     @objc private func systemWillSleep(_ notification: Notification) {
         guard isActive else { return }
         releaseAssertion()
+        releaseClamshellAssertion()
         stopTicking()
     }
 
@@ -401,6 +476,7 @@ final class SleepManager: ObservableObject {
         // Power may have changed while asleep (docked / undocked).
         let previousOnAC = power.onACPower
         power = readPowerState()
+        refreshDeviceClass()
         checkSafeguards(previousOnAC: previousOnAC)
         guard isActive else { return }
 
@@ -414,6 +490,45 @@ final class SleepManager: ObservableObject {
             return
         }
         startTicking()
+        refreshClamshellAssertion()
+    }
+
+    // MARK: Thermal Guard
+
+    private func observeThermalState() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(thermalStateDidChange(_:)),
+            name: ProcessInfo.thermalStateDidChangeNotification,
+            object: ProcessInfo.processInfo
+        )
+    }
+
+    @objc private func thermalStateDidChange(_ notification: Notification) {
+        thermalState = ProcessInfo.processInfo.thermalState
+        evaluateThermalGuard()
+    }
+
+    /// Hardware protection: when the machine reports .serious or .critical
+    /// heat during a session, release the assertion immediately so the system
+    /// can cool down and sleep.
+    private func evaluateThermalGuard() {
+        guard thermalGuard,
+              isActive,
+              thermalState == .serious || thermalState == .critical else {
+            return
+        }
+        deactivate(reason: "Thermal protection (\(thermalLabel))")
+    }
+
+    var thermalLabel: String {
+        switch thermalState {
+        case .nominal: "Nominal"
+        case .fair: "Fair"
+        case .serious: "Serious"
+        case .critical: "Critical"
+        @unknown default: "Unknown"
+        }
     }
 
     // MARK: Notifications
@@ -440,5 +555,7 @@ final class SleepManager: ObservableObject {
         defaults.set(timerMinutes, forKey: Keys.timer)
         defaults.set(acUnplugSafeguard, forKey: Keys.acSafeguard)
         defaults.set(batterySafeguard, forKey: Keys.batterySafeguard)
+        defaults.set(thermalGuard, forKey: Keys.thermalGuard)
+        defaults.set(keepAwakeLidClosed, forKey: Keys.keepAwakeLidClosed)
     }
 }
