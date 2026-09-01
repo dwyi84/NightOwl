@@ -24,7 +24,7 @@ final class UpdaterViewModel: ObservableObject {
 
     static let repoOwner = "dwyi84"
     static let repoName = "NightOwl"
-    static let currentVersion = "0.3.2"
+    static let currentVersion = "0.3.3"
 
     @Published private(set) var updateState: UpdateState = .idle
     @Published var showUpdateConfirm = false
@@ -124,7 +124,7 @@ final class UpdaterViewModel: ObservableObject {
                 return nil
             }
             let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            guard let tag = json?["tag_name"] as? String,
+            guard let rawTag = json?["tag_name"] as? String,
                   let html = json?["html_url"] as? String,
                   let url = URL(string: html) else {
                 return nil
@@ -133,6 +133,8 @@ final class UpdaterViewModel: ObservableObject {
                 .compactMap { $0["browser_download_url"] as? String }
                 .compactMap(URL.init(string:))
                 .first { $0.pathExtension == "zip" }
+            // Store the version without the "v" tag prefix — the UI adds it.
+            let tag = rawTag.hasPrefix("v") ? String(rawTag.dropFirst()) : rawTag
             return ReleaseInfo(version: tag, htmlURL: url, assetURL: assetURL)
         } catch {
             return nil
