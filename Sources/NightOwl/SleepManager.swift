@@ -112,9 +112,10 @@ final class SleepManager: ObservableObject {
         }
     }
     /// Experimental closed-lid keep-awake. Holds an additional
-    /// `PreventSystemSleep` assertion while active and on AC power, so a
-    /// lid-closed MacBook settles into DarkWake (system powered, display off)
-    /// instead of full sleep. Verified on macOS 26 / Apple Silicon.
+    /// `PreventSystemSleep` assertion while active, so a lid-closed MacBook
+    /// settles into DarkWake (system powered, display off) instead of full
+    /// sleep — on AC power or battery alike. Verified on macOS 26 / Apple
+    /// Silicon. Thermal Guard always outranks it.
     @Published var keepAwakeLidClosed: Bool {
         didSet {
             persist()
@@ -278,18 +279,18 @@ final class SleepManager: ObservableObject {
 
     // MARK: Clamshell keep-awake (experimental)
 
-    /// Holds a `PreventSystemSleep` assertion while the session is active and
-    /// the machine is on AC power, so a closed lid ends in DarkWake (system
+    /// Holds a `PreventSystemSleep` assertion while the session is active,
+    /// regardless of power source, so a closed lid ends in DarkWake (system
     /// powered, display off) instead of full sleep.
     private func refreshClamshellAssertion() {
-        let shouldHold = isActive && keepAwakeLidClosed && power.onACPower
+        let shouldHold = isActive && keepAwakeLidClosed
         if shouldHold {
             guard clamshellAssertionID == 0 else { return }
             var id = IOPMAssertionID()
             let result = IOPMAssertionCreateWithName(
                 kIOPMAssertionTypePreventSystemSleep as CFString,
                 IOPMAssertionLevel(kIOPMAssertionLevelOn),
-                "NightOwl lid-closed keep-awake (AC)" as CFString,
+                "NightOwl lid-closed keep-awake" as CFString,
                 &id
             )
             guard result == kIOReturnSuccess else { return }
@@ -374,7 +375,6 @@ final class SleepManager: ObservableObject {
         power = readPowerState()
         refreshDeviceClass()
         checkSafeguards(previousOnAC: previousOnAC)
-        refreshClamshellAssertion()
     }
 
     func refreshPowerState() {
@@ -480,6 +480,15 @@ final class SleepManager: ObservableObject {
         checkSafeguards(previousOnAC: previousOnAC)
         guard isActive else { return }
 
+        // Thermal Guard has top priority — never re-arm assertions into an
+        // overheated system, even if the thermal notification fired while
+        // asleep and was missed.
+        thermalState = ProcessInfo.processInfo.thermalState
+        if thermalGuard, isThermallyCritical {
+            deactivate(reason: "Thermal protection (\(thermalLabel))")
+            return
+        }
+
         if let deadline, deadline <= Date() {
             deactivate(reason: "Timer finished")
             return
@@ -509,16 +518,21 @@ final class SleepManager: ObservableObject {
         evaluateThermalGuard()
     }
 
-    /// Hardware protection: when the machine reports .serious or .critical
-    /// heat during a session, release the assertion immediately so the system
-    /// can cool down and sleep.
+    /// Hardware protection with top priority over every other safeguard and
+    /// the clamshell assertion: when the machine reports .serious or
+    /// .critical heat during a session, release all assertions immediately
+    /// so the system can cool down and sleep.
     private func evaluateThermalGuard() {
         guard thermalGuard,
               isActive,
-              thermalState == .serious || thermalState == .critical else {
+              isThermallyCritical else {
             return
         }
         deactivate(reason: "Thermal protection (\(thermalLabel))")
+    }
+
+    private var isThermallyCritical: Bool {
+        thermalState == .serious || thermalState == .critical
     }
 
     var thermalLabel: String {

@@ -205,8 +205,7 @@ struct MainPopoverView: View {
 
             if sleep.isLaptop {
                 switchRow("Keep running with lid closed", isOn: $sleep.keepAwakeLidClosed)
-                    .disabled(!sleep.power.onACPower)
-                    .help("Experimental — requires AC power")
+                    .help("Experimental — keeps the system awake with the lid closed (DarkWake)")
             }
             switchRow("Thermal Guard", isOn: $sleep.thermalGuard)
             switchRow("Release on AC unplug", isOn: $sleep.acUnplugSafeguard)
