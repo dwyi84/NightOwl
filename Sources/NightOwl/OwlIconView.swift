@@ -96,6 +96,33 @@ enum OwlMenuBarIcon {
     }
 }
 
+// MARK: - Application (Finder / Dock) icon
+
+/// Full macOS app icon: the wide-awake owl on a night-sky squircle, laid out
+/// on the standard 1024 × 1024 canvas. Rendered into Resources/AppIcon.icns
+/// by Scripts/make_icon.swift.
+struct OwlAppIconView: View {
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 185, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color(red: 0.17, green: 0.20, blue: 0.36),  // dusk navy
+                            Color(red: 0.04, green: 0.06, blue: 0.15)   // midnight
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+            OwlIconView(isSleeping: false)
+                .frame(width: 520, height: 520)
+                .foregroundStyle(Color(red: 1.0, green: 0.79, blue: 0.38))  // moonlit amber
+        }
+        .frame(width: 1024, height: 1024)
+    }
+}
+
 // MARK: - Geometry helpers (design space: 100 × 100)
 
 private func pt(_ x: CGFloat, _ y: CGFloat, _ rect: CGRect) -> CGPoint {
