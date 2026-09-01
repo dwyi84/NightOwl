@@ -10,6 +10,8 @@ A featherweight **macOS menu bar utility** that keeps your Mac awake with a sing
 
 ---
 
+<img width="412" height="720" alt="nightowl" src="https://github.com/user-attachments/assets/2eb8ee47-cd0a-4004-a2ca-6137bfb6350b" />
+
 ## Features
 
 - **One-Switch Keep Awake** — a single toggle holds a native `IOPMAssertion`; no daemons, no login items, no background overhead. The menu bar owl sleeps when your Mac may sleep and wakes up when it can't.
