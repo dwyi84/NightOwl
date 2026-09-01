@@ -203,13 +203,15 @@ struct MainPopoverView: View {
             Text("Smart SafeGuard")
                 .font(.subheadline.weight(.medium))
 
-            switchRow("Release on AC unplug", isOn: $sleep.acUnplugSafeguard)
-            switchRow("Thermal Guard", isOn: $sleep.thermalGuard)
             if sleep.isLaptop {
-                switchRow("Stop below \(SleepManager.batteryThresholdPercent)% battery", isOn: $sleep.batterySafeguard)
                 switchRow("Keep running with lid closed", isOn: $sleep.keepAwakeLidClosed)
                     .disabled(!sleep.power.onACPower)
                     .help("Experimental — requires AC power")
+            }
+            switchRow("Thermal Guard", isOn: $sleep.thermalGuard)
+            switchRow("Release on AC unplug", isOn: $sleep.acUnplugSafeguard)
+            if sleep.isLaptop {
+                switchRow("Stop below \(SleepManager.batteryThresholdPercent)% battery", isOn: $sleep.batterySafeguard)
             }
 
             HStack(spacing: 6) {

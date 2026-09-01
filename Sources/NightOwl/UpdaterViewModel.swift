@@ -24,7 +24,7 @@ final class UpdaterViewModel: ObservableObject {
 
     static let repoOwner = "dwyi84"
     static let repoName = "NightOwl"
-    static let currentVersion = "0.3.0"
+    static let currentVersion = "0.3.1"
 
     @Published private(set) var updateState: UpdateState = .idle
     @Published var showUpdateConfirm = false
