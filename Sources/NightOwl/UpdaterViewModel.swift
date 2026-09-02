@@ -24,7 +24,7 @@ final class UpdaterViewModel: ObservableObject {
 
     static let repoOwner = "dwyi84"
     static let repoName = "NightOwl"
-    static let currentVersion = "0.3.5"
+    static let currentVersion = "0.3.6"
 
     @Published private(set) var updateState: UpdateState = .idle
     @Published var showUpdateConfirm = false
@@ -36,17 +36,6 @@ final class UpdaterViewModel: ObservableObject {
         string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest"
     )!
 
-    var buttonTitle: String {
-        switch updateState {
-        case .idle: "Check for Updates"
-        case .checking: "Checking…"
-        case .downloading: "Downloading…"
-        case .updateAvailable: "Update Available"
-        case .upToDate: "Up to Date"
-        case .failed: "Check Again"
-        }
-    }
-
     var isBusy: Bool {
         updateState == .checking || updateState == .downloading
     }
@@ -54,6 +43,7 @@ final class UpdaterViewModel: ObservableObject {
     // MARK: Check
 
     func checkForUpdates() {
+        guard !isBusy else { return }
         updateState = .checking
         Task { [weak self] in
             guard let self else { return }
@@ -103,7 +93,7 @@ final class UpdaterViewModel: ObservableObject {
 
     private func scheduleIdleReset() {
         Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
             guard let self else { return }
             if updateState == .upToDate || updateState == .failed {
                 updateState = .idle

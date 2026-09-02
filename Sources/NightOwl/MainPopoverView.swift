@@ -68,21 +68,57 @@ struct MainPopoverView: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button(action: updater.checkForUpdates) {
-                HStack(spacing: 6) {
-                    Text(updater.buttonTitle)
-                    if updater.isBusy {
-                        ProgressView()
-                            .controlSize(.mini)
-                    }
-                }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .disabled(updater.isBusy)
+            updateIndicator
+                // Pinned to the bordered small-button height so the header
+                // (and the popover) never resizes as the indicator swaps.
+                .frame(height: 20)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
+    }
+
+    /// Header update control, following the CopyNinja popover: a compact
+    /// state indicator instead of a button that swaps its own title.
+    @ViewBuilder
+    private var updateIndicator: some View {
+        switch updater.updateState {
+        case .checking:
+            ProgressView()
+                .controlSize(.mini)
+                .help("Checking for updates…")
+        case .downloading:
+            ProgressView()
+                .controlSize(.mini)
+                .help("Downloading update…")
+        case .upToDate:
+            HStack(spacing: 3) {
+                Image(systemName: "checkmark.circle")
+                Text("Up to date")
+            }
+            .font(.caption2)
+            .foregroundStyle(.secondary)
+        case .updateAvailable:
+            Button("Update Available") {
+                updater.showUpdateConfirm = true
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Update to v\(updater.pendingUpdateVersion ?? "")")
+        case .idle:
+            Button("Check for Updates") {
+                updater.checkForUpdates()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Check for updates")
+        case .failed:
+            Button("Check Again") {
+                updater.checkForUpdates()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .help("Check for updates again")
+        }
     }
 
     // MARK: - Main toggle
@@ -280,9 +316,14 @@ struct MainPopoverView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
+            // Fixed 16×16 tile: SF Symbols have state-dependent metrics
+            // (moon.zzz 17pt vs eye 13pt), which used to resize the popover
+            // on every Keep Awake toggle.
             HStack(spacing: 6) {
                 Image(systemName: statusIconName)
+                    .font(.caption)
                     .foregroundStyle(statusIconColor)
+                    .frame(width: 16, height: 16)
                 Text(statusMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
