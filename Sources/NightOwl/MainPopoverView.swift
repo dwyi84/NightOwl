@@ -155,12 +155,27 @@ struct MainPopoverView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text("Mode")
                 .font(.subheadline.weight(.medium))
-            Picker("", selection: $sleep.mode) {
-                Text("System Only").tag(SleepMode.systemOnly)
-                Text("Display + System").tag(SleepMode.displayAndSystem)
+            // Two equal-width tiles so the buttons balance left/right
+            // regardless of label length (segmented controls size by content).
+            HStack(spacing: 6) {
+                ForEach(SleepMode.allCases) { mode in
+                    let isSelected = sleep.mode == mode
+                    Button {
+                        sleep.mode = mode
+                    } label: {
+                        Text(mode.label)
+                            .font(.callout.weight(.medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(isSelected ? Color.accentColor.opacity(0.25) : Color.gray.opacity(0.15))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(mode.label)
+                }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
         }
     }
 
@@ -394,7 +409,7 @@ struct MainPopoverView: View {
     // MARK: - Footer
 
     private var footer: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 8) {
             HStack(spacing: 8) {
                 Link(destination: coffeeURL) {
                     HStack(spacing: 6) {
@@ -424,6 +439,18 @@ struct MainPopoverView: View {
                     NSApp.terminate(nil)
                 }
                 .controlSize(.small)
+            }
+
+            HStack {
+                Text("Launch at Login")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Toggle("", isOn: $sleep.launchAtLogin)
+                    .toggleStyle(.switch)
+                    .controlSize(.mini)
+                    .labelsHidden()
+                    .accessibilityLabel("Launch at Login")
             }
 
             Text("Crafted by MelissaSoft")

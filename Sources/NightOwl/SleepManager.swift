@@ -5,6 +5,7 @@ import Foundation
 import IOKit
 import IOKit.ps
 import IOKit.pwr_mgt
+import ServiceManagement
 import UserNotifications
 
 // MARK: - Modes & timers
@@ -122,6 +123,15 @@ final class SleepManager: ObservableObject {
             refreshClamshellAssertion()
         }
     }
+    /// Launch NightOwl automatically at login (SMAppService login item).
+    /// The system's registration state is the source of truth; this flag is
+    /// the user's intent and is reconciled with it in `applyLaunchAtLogin`.
+    @Published var launchAtLogin: Bool {
+        didSet {
+            persist()
+            applyLaunchAtLogin()
+        }
+    }
 
     var isSleeping: Bool { !isActive }
 
@@ -171,6 +181,7 @@ final class SleepManager: ObservableObject {
         static let batterySafeguard = "batterySafeguard"
         static let thermalGuard = "thermalGuard"
         static let keepAwakeLidClosed = "keepAwakeLidClosed"
+        static let launchAtLogin = "launchAtLogin"
     }
 
     init() {
@@ -182,12 +193,14 @@ final class SleepManager: ObservableObject {
         batterySafeguard = defaults.object(forKey: Keys.batterySafeguard) as? Bool ?? true
         thermalGuard = defaults.object(forKey: Keys.thermalGuard) as? Bool ?? true
         keepAwakeLidClosed = defaults.object(forKey: Keys.keepAwakeLidClosed) as? Bool ?? false
+        launchAtLogin = defaults.object(forKey: Keys.launchAtLogin) as? Bool ?? true
         thermalState = ProcessInfo.processInfo.thermalState
 
         observeWorkspaceLifecycle()
         observeThermalState()
         startPowerMonitoring()
         refreshDeviceClass()
+        applyLaunchAtLogin()
     }
 
     // MARK: Activation
@@ -251,6 +264,7 @@ final class SleepManager: ObservableObject {
         batterySafeguard = true
         thermalGuard = true
         keepAwakeLidClosed = false
+        launchAtLogin = true
         lastReleaseReason = nil
     }
 
@@ -568,6 +582,27 @@ final class SleepManager: ObservableObject {
         UNUserNotificationCenter.current().add(request)
     }
 
+    // MARK: Launch at login
+
+    /// Reconciles the user's Launch-at-Login intent with the actual
+    /// SMAppService registration state.
+    private func applyLaunchAtLogin() {
+        let service = SMAppService.mainApp
+        do {
+            if launchAtLogin {
+                if service.status != .enabled {
+                    try service.register()
+                }
+            } else if service.status == .enabled || service.status == .requiresApproval {
+                try service.unregister()
+            }
+        } catch {
+            // Registration can fail when running from an unsigned or
+            // non-bundle binary — resync the toggle with the real state.
+            launchAtLogin = service.status == .enabled
+        }
+    }
+
     // MARK: Persistence
 
     private func persist() {
@@ -577,5 +612,6 @@ final class SleepManager: ObservableObject {
         defaults.set(batterySafeguard, forKey: Keys.batterySafeguard)
         defaults.set(thermalGuard, forKey: Keys.thermalGuard)
         defaults.set(keepAwakeLidClosed, forKey: Keys.keepAwakeLidClosed)
+        defaults.set(launchAtLogin, forKey: Keys.launchAtLogin)
     }
 }
