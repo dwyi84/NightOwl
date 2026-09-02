@@ -23,6 +23,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var popover: NSPopover!
     private var rightClickMenu: NSMenu!
+    private var keepAwakeMenuItem: NSMenuItem!
+    private var launchAtLoginMenuItem: NSMenuItem!
     private var cancellables = Set<AnyCancellable>()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -34,9 +36,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         sleepManager.$isActive
             .sink { [weak self] active in
                 self?.updateStatusIcon(isSleeping: !active)
-                self?.rightClickMenu.item(at: 0)?.title = active ? "Stop Keeping Awake" : "Keep Awake"
+                self?.keepAwakeMenuItem?.title = active ? "Stop Keeping Awake" : "Keep Awake"
             }
             .store(in: &cancellables)
+
+        // Silent update check on launch — the popover header surfaces the result.
+        updater.checkForUpdates()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -57,8 +62,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         rightClickMenu = NSMenu()
         rightClickMenu.addItem(
+            withTitle: "Open NightOwl",
+            action: #selector(showPopoverFromMenu),
+            keyEquivalent: ""
+        )
+        rightClickMenu.addItem(.separator())
+        keepAwakeMenuItem = rightClickMenu.addItem(
             withTitle: "Keep Awake",
             action: #selector(toggleKeepAwake),
+            keyEquivalent: ""
+        )
+        launchAtLoginMenuItem = rightClickMenu.addItem(
+            withTitle: "Launch at Login",
+            action: #selector(toggleLaunchAtLoginFromMenu),
+            keyEquivalent: ""
+        )
+        rightClickMenu.addItem(
+            withTitle: "Check for Updates",
+            action: #selector(checkForUpdatesFromMenu),
             keyEquivalent: ""
         )
         rightClickMenu.addItem(.separator())
@@ -94,6 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func statusItemClicked(_ sender: Any?) {
         guard let event = NSApp.currentEvent else { return }
         if event.type == .rightMouseUp {
+            launchAtLoginMenuItem.state = sleepManager.launchAtLogin ? .on : .off
             statusItem.menu = rightClickMenu
             statusItem.button?.performClick(nil)
             statusItem.menu = nil
@@ -102,8 +124,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    @objc private func showPopoverFromMenu() {
+        togglePopover()
+    }
+
     @objc private func toggleKeepAwake() {
         sleepManager.toggle()
+    }
+
+    @objc private func toggleLaunchAtLoginFromMenu() {
+        sleepManager.launchAtLogin.toggle()
+    }
+
+    @objc private func checkForUpdatesFromMenu() {
+        updater.checkForUpdatesPresentingAlert()
     }
 
     @objc private func quitApp() {

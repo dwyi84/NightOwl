@@ -24,7 +24,7 @@ final class UpdaterViewModel: ObservableObject {
 
     static let repoOwner = "dwyi84"
     static let repoName = "NightOwl"
-    static let currentVersion = "0.5.0"
+    static let currentVersion = "0.6.0"
 
     @Published private(set) var updateState: UpdateState = .idle
     @Published var showUpdateConfirm = false
@@ -42,6 +42,8 @@ final class UpdaterViewModel: ObservableObject {
 
     // MARK: Check
 
+    /// Silent inline check (launch auto-check + popover header button).
+    /// Only updates the state — the header indicator surfaces the result.
     func checkForUpdates() {
         guard !isBusy else { return }
         updateState = .checking
@@ -51,7 +53,6 @@ final class UpdaterViewModel: ObservableObject {
                 if Self.isNewer(release.version) {
                     pendingUpdate = release
                     updateState = .updateAvailable
-                    showUpdateConfirm = true
                 } else {
                     updateState = .upToDate
                     scheduleIdleReset()
@@ -60,6 +61,47 @@ final class UpdaterViewModel: ObservableObject {
                 updateState = .failed
                 scheduleIdleReset()
             }
+        }
+    }
+
+    /// Menu action: runs a fresh check and presents the outcome — an update
+    /// prompt (Update Now / Later), an up-to-date note, or an error.
+    func checkForUpdatesPresentingAlert() {
+        guard !isBusy else { return }
+        updateState = .checking
+        Task { [weak self] in
+            guard let self else { return }
+            if let release = await Self.fetchLatestRelease() {
+                if Self.isNewer(release.version) {
+                    pendingUpdate = release
+                    updateState = .updateAvailable
+                    presentUpdateConfirmation()
+                } else {
+                    updateState = .upToDate
+                    scheduleIdleReset()
+                    Self.presentUpToDateAlert()
+                }
+            } else {
+                updateState = .failed
+                scheduleIdleReset()
+                Self.presentFailedAlert()
+            }
+        }
+    }
+
+    /// "Update to vX?" prompt shown as a modal alert so it also works while
+    /// the popover is closed (e.g. checks started from the status item menu).
+    func presentUpdateConfirmation() {
+        guard let release = pendingUpdate else { return }
+        let alert = NSAlert()
+        alert.messageText = "Update to v\(release.version)?"
+        alert.informativeText =
+            "NightOwl \(release.version) is available — you have \(Self.currentVersion). "
+            + "The update is downloaded and installed automatically."
+        alert.addButton(withTitle: "Update Now")
+        alert.addButton(withTitle: "Later")
+        if alert.runModal() == .alertFirstButtonReturn {
+            installNow()
         }
     }
 
@@ -187,5 +229,24 @@ final class UpdaterViewModel: ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
             NSApp.terminate(nil)
         }
+    }
+
+    // MARK: - Result alerts
+
+    private static func presentUpToDateAlert() {
+        let alert = NSAlert()
+        alert.messageText = "You're Up to Date"
+        alert.informativeText = "NightOwl \(currentVersion) is the latest version."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
+    private static func presentFailedAlert() {
+        let alert = NSAlert()
+        alert.messageText = "Update Check Failed"
+        alert.informativeText =
+            "Could not reach GitHub Releases. Check your connection and try again."
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
     }
 }
