@@ -195,14 +195,21 @@ struct MainPopoverView: View {
             HStack(spacing: 6) {
                 stepperButton("−1h", minutes: -60)
                 stepperButton("−10m", minutes: -10)
+                // The configured duration sits in its own bordered,
+                // accent-tinted tile — clearly separate from the steppers.
                 Text(sleep.timerLabel)
-                    .font(.caption.monospacedDigit().weight(.semibold))
+                    .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 5)
+                    .padding(.vertical, 4)
                     .background(
-                        RoundedRectangle(cornerRadius: 6)
-                            .fill(Color.gray.opacity(0.10))
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.accentColor.opacity(0.12))
                     )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .strokeBorder(Color.accentColor.opacity(0.4), lineWidth: 1)
+                    )
+                    .foregroundStyle(Color.accentColor)
                 stepperButton("+10m", minutes: 10)
                 stepperButton("+1h", minutes: 60)
             }
@@ -307,37 +314,45 @@ struct MainPopoverView: View {
     // MARK: - Status
 
     private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
+        // Left/right split: title + message on the left, big remaining
+        // time filling the right side.
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
                 Text("Status")
                     .font(.subheadline.weight(.medium))
-                Spacer()
-                Text(remainingText)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-            // Fixed 16×16 tile: SF Symbols have state-dependent metrics
-            // (moon.zzz 17pt vs eye 13pt), which used to resize the popover
-            // on every Keep Awake toggle.
-            HStack(spacing: 6) {
-                Image(systemName: statusIconName)
-                    .font(.caption)
-                    .foregroundStyle(statusIconColor)
-                    .frame(width: 16, height: 16)
-                Text(statusMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if sleep.thermalState == .serious || sleep.thermalState == .critical {
+                // Fixed 16×16 tile: SF Symbols have state-dependent metrics
+                // (moon.zzz 17pt vs eye 13pt), which used to resize the popover
+                // on every Keep Awake toggle.
                 HStack(spacing: 6) {
-                    Image(systemName: "thermometer.high")
-                        .foregroundStyle(sleep.thermalState == .critical ? Color.red : Color.orange)
-                    Text("Thermal: \(sleep.thermalLabel)")
+                    Image(systemName: statusIconName)
+                        .font(.caption)
+                        .foregroundStyle(statusIconColor)
+                        .frame(width: 16, height: 16)
+                    Text(statusMessage)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
+                if sleep.thermalState == .serious || sleep.thermalState == .critical {
+                    HStack(spacing: 6) {
+                        Image(systemName: "thermometer.high")
+                            .foregroundStyle(sleep.thermalState == .critical ? Color.red : Color.orange)
+                        Text("Thermal: \(sleep.thermalLabel)")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
+            Spacer(minLength: 8)
+            Text(remainingText)
+                .font(.system(size: 26, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(remainingColor)
+                .lineLimit(1)
+                .fixedSize()
         }
+    }
+
+    private var remainingColor: Color {
+        sleep.isActive ? Color.primary : Color.secondary
     }
 
     private var remainingText: String {
