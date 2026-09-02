@@ -504,16 +504,22 @@ final class SleepManager: ObservableObject {
 
     // MARK: Thermal Guard
 
+    /// The thermal notification is posted on a background dispatch queue, so
+    /// the selector-based observer would trip the MainActor runtime check and
+    /// crash. Register a block-based observer that hops onto the main queue.
     private func observeThermalState() {
         NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(thermalStateDidChange(_:)),
-            name: ProcessInfo.thermalStateDidChangeNotification,
-            object: ProcessInfo.processInfo
-        )
+            forName: ProcessInfo.thermalStateDidChangeNotification,
+            object: ProcessInfo.processInfo,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.handleThermalStateChange()
+            }
+        }
     }
 
-    @objc private func thermalStateDidChange(_ notification: Notification) {
+    private func handleThermalStateChange() {
         thermalState = ProcessInfo.processInfo.thermalState
         evaluateThermalGuard()
     }
