@@ -43,9 +43,7 @@ A featherweight **macOS menu bar utility** that keeps your Mac awake with a sing
 ### Homebrew (recommended)
 
 ```bash
-brew tap dwyi84/tap
-brew trust dwyi84/tap
-brew install --cask nightowl
+brew install --cask dwyi84/tap/nightowl
 ```
 
 This installs **NightOwl.app** to `~/Applications`. Because the app is signed with a local certificate rather than notarized by Apple, Gatekeeper blocks the first launch — right-click the app and choose **Open**, or clear the quarantine flag:
