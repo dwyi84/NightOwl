@@ -40,16 +40,27 @@ A featherweight **macOS menu bar utility** that keeps your Mac awake with a sing
 
 ## Installation
 
-No build needed — just download the app:
+### Homebrew (recommended)
+
+```bash
+brew tap dwyi84/tap
+brew trust dwyi84/tap
+brew install --cask nightowl
+```
+
+This installs **NightOwl.app** to `~/Applications`. Because the app is signed with a local certificate rather than notarized by Apple, Gatekeeper blocks the first launch — right-click the app and choose **Open**, or clear the quarantine flag:
+
+```bash
+xattr -dr com.apple.quarantine "$HOME/Applications/NightOwl.app"
+```
+
+### Manual download
+
+No build needed — grab the app straight from the latest release:
 
 1. Open the [latest release](https://github.com/dwyi84/NightOwl/releases/latest) and download the `NightOwl-x.y.z.zip` asset.
 2. Unzip it and drag **NightOwl.app** into your **Applications** folder.
-3. On first launch macOS Gatekeeper may warn because the app is signed with a local certificate rather than notarized. **Right-click the app → Open**, then confirm **Open**. If it still refuses, clear the quarantine flag:
-
-   ```bash
-   xattr -dr com.apple.quarantine /Applications/NightOwl.app
-   ```
-
+3. On first launch macOS Gatekeeper may warn for the same reason as above. **Right-click the app → Open**, then confirm **Open**.
 4. Click the owl in the menu bar to open the panel.
 
 NightOwl keeps itself current: it checks GitHub Releases at launch and on demand (**Check for Updates**), then downloads and installs newer versions in one click.
@@ -113,6 +124,12 @@ Sources/NightOwl/
 ├── OwlIconView.swift       # vector owl face + menu bar template image
 └── UpdaterViewModel.swift  # GitHub Releases auto-update flow
 ```
+
+### Releasing
+
+1. Bump `UpdaterViewModel.currentVersion` and `Resources/Info.plist` (`CFBundleShortVersionString` / `CFBundleVersion`).
+2. `./build.sh`, then zip the app as `dist/NightOwl-<version>.zip` and publish it on GitHub Releases.
+3. Point the Homebrew tap at the new build: `Scripts/update_cask.sh <version>`, then commit/push [dwyi84/homebrew-tap](https://github.com/dwyi84/homebrew-tap).
 
 ## Privacy
 
