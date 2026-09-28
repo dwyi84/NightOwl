@@ -24,7 +24,7 @@ final class UpdaterViewModel: ObservableObject {
 
     static let repoOwner = "dwyi84"
     static let repoName = "NightOwl"
-    static let currentVersion = "0.6.0"
+    static let currentVersion = "0.6.1"
 
     @Published private(set) var updateState: UpdateState = .idle
     @Published var showUpdateConfirm = false
@@ -96,8 +96,8 @@ final class UpdaterViewModel: ObservableObject {
         let alert = NSAlert()
         alert.messageText = "Update to v\(release.version)?"
         alert.informativeText =
-            "NightOwl \(release.version) is available — you have \(Self.currentVersion). "
-            + "The update is downloaded and installed automatically."
+            "NightOwl v\(release.version) is available. You're running v\(Self.currentVersion). "
+            + "It will be downloaded and installed automatically, then NightOwl will relaunch."
         alert.addButton(withTitle: "Update Now")
         alert.addButton(withTitle: "Later")
         if alert.runModal() == .alertFirstButtonReturn {

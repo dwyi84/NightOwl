@@ -36,19 +36,23 @@ A featherweight **macOS menu bar utility** that keeps your Mac awake with a sing
 
 - macOS 14 (Sonoma) or later
 - Apple Silicon (arm64)
-- Xcode Command Line Tools (for the Swift toolchain)
+- Xcode Command Line Tools (only if you build from source)
 
 ## Installation
 
-Clone the repository and build:
+No build needed — just download the app:
 
-```bash
-git clone https://github.com/dwyi84/NightOwl.git
-cd NightOwl
-./build.sh
-```
+1. Open the [latest release](https://github.com/dwyi84/NightOwl/releases/latest) and download the `NightOwl-x.y.z.zip` asset.
+2. Unzip it and drag **NightOwl.app** into your **Applications** folder.
+3. On first launch macOS Gatekeeper may warn because the app is signed with a local certificate rather than notarized. **Right-click the app → Open**, then confirm **Open**. If it still refuses, clear the quarantine flag:
 
-`build.sh` compiles the app with Swift Package Manager, assembles `NightOwl.app` (with an `LSUIElement` bundle so it lives quietly in the menu bar), signs it with a stable local identity, and launches it.
+   ```bash
+   xattr -dr com.apple.quarantine /Applications/NightOwl.app
+   ```
+
+4. Click the owl in the menu bar to open the panel.
+
+NightOwl keeps itself current: it checks GitHub Releases at launch and on demand (**Check for Updates**), then downloads and installs newer versions in one click.
 
 ## Usage
 
