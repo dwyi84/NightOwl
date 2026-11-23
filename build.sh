@@ -103,6 +103,8 @@ swift build -c release
 BIN_PATH="$(swift build -c release --show-bin-path)/$APP_NAME"
 
 echo "==> Assembling $APP_NAME.app..."
+mkdir -p "$DIST"
+touch "$DIST/.metadata_never_index"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_PATH" "$APP/Contents/MacOS/$APP_NAME"

@@ -3,20 +3,16 @@ import Combine
 import SwiftUI
 
 @main
-struct NightOwlApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    var body: some Scene {
-        // The app is a pure LSUIElement menu bar agent — no windows.
-        // The scene is only here to satisfy the SwiftUI lifecycle.
-        Settings {
-            EmptyView()
-        }
-    }
-}
-
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private static let sharedDelegate = AppDelegate()
+
+    static func main() {
+        let app = NSApplication.shared
+        app.setActivationPolicy(.accessory)
+        app.delegate = sharedDelegate
+        app.run()
+    }
     let sleepManager = SleepManager()
     let updater = UpdaterViewModel()
 
@@ -46,6 +42,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ notification: Notification) {
         sleepManager.deactivate(reason: nil)
+    }
+
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !popover.isShown {
+            togglePopover()
+        }
+        return false
     }
 
     // MARK: - Status item
