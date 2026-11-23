@@ -2,13 +2,15 @@ import AppKit
 import CGVirtualDisplayBridge
 import CoreGraphics
 import Foundation
+import IOKit
 
 /// Manages true Clamshell mode for headless / remote-desktop sessions:
-/// 1. Creates a `CGVirtualDisplay` so WindowServer and remote-desktop tools
-///    (RustDesk, Screen Sharing) always have an active framebuffer when the
-///    built-in panel turns off.
-/// 2. Toggles `pmset -a disablesleep` via a one-time scoped `/etc/sudoers.d`
+/// 1. Toggles `pmset -a disablesleep` via a one-time scoped `/etc/sudoers.d`
 ///    rule so the Mac stays in Full Wake instead of entering Sleep/DarkWake.
+/// 2. Observes `IOPMrootDomain`'s `AppleClamshellState` and creates a
+///    `CGVirtualDisplay` **on-demand** only while the lid is closed (and no
+///    external physical monitor is attached), keeping the normal open-lid
+///    display arrangement and native ProMotion/HiDPI completely untouched.
 /// 3. Runs a detached watchdog process that automatically restores
 ///    `disablesleep 0` if NightOwl terminates unexpectedly (crash / SIGKILL).
 @MainActor
@@ -19,6 +21,10 @@ final class ClamshellManager {
 
     private var virtualDisplay: CGVirtualDisplay?
     private var watchdogProcess: Process?
+    private var notificationPort: IONotificationPortRef?
+    private var clamshellNotifier: io_object_t = IO_OBJECT_NULL
+    private var notificationContext: UnsafeMutableRawPointer?
+    private var pendingStopWorkItem: DispatchWorkItem?
     private(set) var isClamshellActive = false
 
     /// Checks whether passwordless `pmset -a disablesleep` is configured.
@@ -41,7 +47,6 @@ final class ClamshellManager {
     /// scoped strictly to `pmset -a disablesleep 0/1` for the current user.
     func installSudoersRule() -> Bool {
         let user = NSUserName()
-        // Validate username to simple POSIX characters before embedding in shell.
         guard user.range(of: #"^[a-zA-Z0-9._-]+$"#, options: .regularExpression) != nil else {
             return false
         }
@@ -61,27 +66,24 @@ final class ClamshellManager {
         return runWithAdminPrivileges(shell)
     }
 
-    /// Enables virtual display + `pmset -a disablesleep 1` + crash watchdog.
-    /// Returns `false` if `sudoers` is not configured or `pmset` fails.
+    /// Enables `pmset -a disablesleep 1`, crash watchdog, and On-Demand lid
+    /// monitoring (`CGVirtualDisplay` is created only when the lid closes).
     @discardableResult
     func enable() -> Bool {
         guard isSudoersConfigured else { return false }
-
-        startVirtualDisplay()
-
-        guard setDisableSleep(true) else {
-            stopVirtualDisplay()
-            return false
-        }
+        guard setDisableSleep(true) else { return false }
 
         startWatchdog()
         isClamshellActive = true
+        startClamshellMonitoring()
+        syncVirtualDisplayForLidState()
         return true
     }
 
-    /// Stops watchdog, restores `pmset -a disablesleep 0`, and tears down the
-    /// virtual display.
+    /// Stops lid monitoring, stops watchdog, restores `pmset -a disablesleep 0`,
+    /// and tears down any active virtual display.
     func disable() {
+        stopClamshellMonitoring()
         stopWatchdog()
         if isClamshellActive || isSudoersConfigured {
             _ = setDisableSleep(false)
@@ -95,6 +97,124 @@ final class ClamshellManager {
     func restoreOnLaunchIfNeeded() {
         guard isSudoersConfigured else { return }
         _ = setDisableSleep(false)
+    }
+
+    // MARK: - On-Demand Lid Monitoring (IOPMrootDomain)
+
+    private func startClamshellMonitoring() {
+        guard notificationPort == nil else { return }
+        let rootDomain = IOServiceGetMatchingService(
+            kIOMainPortDefault,
+            IOServiceMatching("IOPMrootDomain")
+        )
+        guard rootDomain != IO_OBJECT_NULL else { return }
+        defer { IOObjectRelease(rootDomain) }
+
+        guard let port = IONotificationPortCreate(kIOMainPortDefault) else { return }
+        let runLoopSource = IONotificationPortGetRunLoopSource(port).takeUnretainedValue()
+        CFRunLoopAddSource(CFRunLoopGetMain(), runLoopSource, .commonModes)
+
+        let context = Unmanaged.passRetained(self).toOpaque()
+        let callback: IOServiceInterestCallback = { refcon, _, _, _ in
+            guard let refcon else { return }
+            let manager = Unmanaged<ClamshellManager>.fromOpaque(refcon).takeUnretainedValue()
+            MainActor.assumeIsolated {
+                manager.syncVirtualDisplayForLidState()
+            }
+        }
+
+        var notifier: io_object_t = IO_OBJECT_NULL
+        let kr = IOServiceAddInterestNotification(
+            port,
+            rootDomain,
+            kIOGeneralInterest,
+            callback,
+            context,
+            &notifier
+        )
+        guard kr == KERN_SUCCESS else {
+            Unmanaged<ClamshellManager>.fromOpaque(context).release()
+            IONotificationPortDestroy(port)
+            return
+        }
+
+        notificationPort = port
+        clamshellNotifier = notifier
+        notificationContext = context
+    }
+
+    private func stopClamshellMonitoring() {
+        pendingStopWorkItem?.cancel()
+        pendingStopWorkItem = nil
+
+        if clamshellNotifier != IO_OBJECT_NULL {
+            IOObjectRelease(clamshellNotifier)
+            clamshellNotifier = IO_OBJECT_NULL
+        }
+        if let port = notificationPort {
+            IONotificationPortDestroy(port)
+            notificationPort = nil
+        }
+        if let context = notificationContext {
+            Unmanaged<ClamshellManager>.fromOpaque(context).release()
+            notificationContext = nil
+        }
+    }
+
+    private func syncVirtualDisplayForLidState() {
+        guard isClamshellActive else {
+            stopVirtualDisplay()
+            return
+        }
+
+        let shouldShowVirtual = isLidClosed() && !hasExternalPhysicalDisplay()
+        if shouldShowVirtual {
+            pendingStopWorkItem?.cancel()
+            pendingStopWorkItem = nil
+            startVirtualDisplay()
+        } else if virtualDisplay != nil && pendingStopWorkItem == nil {
+            // Delay teardown briefly on lid-open so the built-in display finishes
+            // waking before the virtual framebuffer disappears.
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.pendingStopWorkItem = nil
+                if !self.isClamshellActive || !self.isLidClosed() || self.hasExternalPhysicalDisplay() {
+                    self.stopVirtualDisplay()
+                }
+            }
+            pendingStopWorkItem = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: work)
+        }
+    }
+
+    private func isLidClosed() -> Bool {
+        let rootDomain = IOServiceGetMatchingService(
+            kIOMainPortDefault,
+            IOServiceMatching("IOPMrootDomain")
+        )
+        guard rootDomain != IO_OBJECT_NULL else { return false }
+        defer { IOObjectRelease(rootDomain) }
+
+        guard let state = IORegistryEntryCreateCFProperty(
+            rootDomain,
+            "AppleClamshellState" as CFString,
+            kCFAllocatorDefault,
+            0
+        )?.takeRetainedValue() as? Bool else {
+            return false
+        }
+        return state
+    }
+
+    private func hasExternalPhysicalDisplay() -> Bool {
+        var count: UInt32 = 0
+        guard CGGetActiveDisplayList(0, nil, &count) == .success, count > 0 else { return false }
+        var displays = [CGDirectDisplayID](repeating: 0, count: Int(count))
+        guard CGGetActiveDisplayList(count, &displays, &count) == .success else { return false }
+        let virtualID = virtualDisplay?.displayID
+        return displays.prefix(Int(count)).contains { id in
+            CGDisplayIsBuiltin(id) == 0 && id != virtualID
+        }
     }
 
     // MARK: - Virtual Display
@@ -132,6 +252,8 @@ final class ClamshellManager {
     }
 
     private func stopVirtualDisplay() {
+        pendingStopWorkItem?.cancel()
+        pendingStopWorkItem = nil
         virtualDisplay = nil
     }
 
