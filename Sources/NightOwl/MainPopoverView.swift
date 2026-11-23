@@ -6,7 +6,7 @@ struct MainPopoverView: View {
     @ObservedObject var sleep: SleepManager
     @ObservedObject var updater: UpdaterViewModel
 
-    @State private var showResetConfirm = false
+    private var showResetConfirm = State(initialValue: false)
 
     private let coffeeURL = URL(string: "https://buymeacoffee.com/dwyi84d")!
 
@@ -33,7 +33,7 @@ struct MainPopoverView: View {
         }
         .confirmationDialog(
             "Reset all settings to defaults?",
-            isPresented: $showResetConfirm,
+            isPresented: showResetConfirm.projectedValue,
             titleVisibility: .visible
         ) {
             Button("Reset", role: .destructive) {
@@ -263,7 +263,7 @@ struct MainPopoverView: View {
 
             if sleep.isLaptop {
                 switchRow("Keep running with lid closed", isOn: $sleep.keepAwakeLidClosed)
-                    .help("Experimental — keeps the system awake with the lid closed (DarkWake)")
+                    .help("True Clamshell — creates a virtual display and disables lid-close sleep (requires one-time admin permission)")
             }
             switchRow("Thermal Guard", isOn: $sleep.thermalGuard)
             switchRow("Release on AC unplug", isOn: $sleep.acUnplugSafeguard)
@@ -430,7 +430,7 @@ struct MainPopoverView: View {
                 Spacer()
 
                 Button("Reset") {
-                    showResetConfirm = true
+                    showResetConfirm.wrappedValue = true
                 }
                 .controlSize(.small)
                 .help("Reset all settings to defaults")

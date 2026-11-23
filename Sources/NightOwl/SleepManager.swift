@@ -73,6 +73,7 @@ final class SleepManager: ObservableObject {
     /// (CoreGraphics). No model-name sniffing.
     @Published private(set) var isLaptop = true
     @Published private(set) var thermalState: ProcessInfo.ThermalState = .nominal
+    @Published private(set) var clamshellAuthorized = false
 
     // Preferences (persisted)
     @Published var mode: SleepMode {
@@ -112,14 +113,23 @@ final class SleepManager: ObservableObject {
             evaluateThermalGuard()
         }
     }
-    /// Experimental closed-lid keep-awake. Holds an additional
-    /// `PreventSystemSleep` assertion while active, so a lid-closed MacBook
-    /// settles into DarkWake (system powered, display off) instead of full
-    /// sleep — on AC power or battery alike. Verified on macOS 26 / Apple
-    /// Silicon. Thermal Guard always outranks it.
+    /// True Clamshell keep-awake. Combines `CGVirtualDisplay` +
+    /// `pmset -a disablesleep 1` (via one-time scoped `/etc/sudoers.d/nightowl`)
+    /// + `PreventSystemSleep` + a crash-safe watchdog, so a lid-closed MacBook
+    /// stays in Full Wake with an active virtual display for RustDesk / GUI
+    /// remote sessions. Thermal Guard and all safeguards always outrank it.
     @Published var keepAwakeLidClosed: Bool {
         didSet {
             persist()
+            if keepAwakeLidClosed && !clamshell.isSudoersConfigured {
+                if !clamshell.installSudoersRule() {
+                    clamshellAuthorized = false
+                    keepAwakeLidClosed = false
+                    lastReleaseReason = "Clamshell permission cancelled"
+                    return
+                }
+                clamshellAuthorized = true
+            }
             refreshClamshellAssertion()
         }
     }
@@ -164,6 +174,7 @@ final class SleepManager: ObservableObject {
     }
 
     // Internals
+    private let clamshell = ClamshellManager()
     private var assertionID: IOPMAssertionID = 0
     private var clamshellAssertionID: IOPMAssertionID = 0
     private var deadline: Date?
@@ -201,6 +212,8 @@ final class SleepManager: ObservableObject {
         startPowerMonitoring()
         refreshDeviceClass()
         applyLaunchAtLogin()
+        clamshellAuthorized = clamshell.isSudoersConfigured
+        clamshell.restoreOnLaunchIfNeeded()
     }
 
     // MARK: Activation
@@ -291,14 +304,26 @@ final class SleepManager: ObservableObject {
         assertionID = 0
     }
 
-    // MARK: Clamshell keep-awake (experimental)
+    // MARK: Clamshell keep-awake
 
-    /// Holds a `PreventSystemSleep` assertion while the session is active,
-    /// regardless of power source, so a closed lid ends in DarkWake (system
-    /// powered, display off) instead of full sleep.
+    /// Enables `CGVirtualDisplay` + `pmset -a disablesleep 1` + watchdog +
+    /// `PreventSystemSleep` so a lid-closed MacBook stays in Full Wake with
+    /// an active display for remote desktop (RustDesk, Screen Sharing).
     private func refreshClamshellAssertion() {
         let shouldHold = isActive && keepAwakeLidClosed
         if shouldHold {
+            if !clamshell.isSudoersConfigured {
+                guard clamshell.installSudoersRule() else {
+                    clamshellAuthorized = false
+                    keepAwakeLidClosed = false
+                    lastReleaseReason = "Clamshell permission cancelled"
+                    return
+                }
+                clamshellAuthorized = true
+            }
+            if !clamshell.isClamshellActive {
+                clamshell.enable()
+            }
             guard clamshellAssertionID == 0 else { return }
             var id = IOPMAssertionID()
             let result = IOPMAssertionCreateWithName(
@@ -315,9 +340,18 @@ final class SleepManager: ObservableObject {
     }
 
     private func releaseClamshellAssertion() {
+        clamshell.disable()
         guard clamshellAssertionID != 0 else { return }
         IOPMAssertionRelease(clamshellAssertionID)
         clamshellAssertionID = 0
+    }
+
+    func removeClamshellPermission() {
+        if keepAwakeLidClosed {
+            keepAwakeLidClosed = false
+        }
+        clamshell.uninstallSudoersRule()
+        clamshellAuthorized = clamshell.isSudoersConfigured
     }
 
     // MARK: Timer
