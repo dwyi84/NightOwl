@@ -10,7 +10,13 @@ A featherweight **macOS menu bar utility** that keeps your Mac awake with a sing
 
 ---
 
-<img width="412" height="720" alt="nightowl" src="https://github.com/user-attachments/assets/2eb8ee47-cd0a-4004-a2ca-6137bfb6350b" />
+<p align="center">
+  <a href="assets/nightowl-promo.mp4">
+    <img width="412" alt="NightOwl Demo Video" src="assets/nightowl-promo.gif" />
+  </a>
+  <br />
+  <sub>Demo preview · <a href="assets/nightowl-promo.mp4">Watch full HD MP4</a></sub>
+</p>
 
 ## Features
 
